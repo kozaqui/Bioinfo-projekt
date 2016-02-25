@@ -82,8 +82,10 @@ def extract_mmCIF_header(ftp, filename):
     except Exception as e:
         # open error log file to append
         f_log = open('modRNAinPDB_error_log','a')
-        f_log.write(filename + '\n' + e + '\n\n')
+        f_log.write(filename + '\n' + str(e) + '\n\n')
         f_log.close()
+        return "NA"
+
     return mmCIF
 
 
@@ -161,7 +163,7 @@ def insert_modRNA_records2(c, mmCIF, PDB_ID, RNA_mod_list):
     :param c: SQLite cursor to the database
     :param mmCIF: python dictionary with structure info
     """
-    canonical_bases = ['A','U','G','C','GDP','UDP','ADP','TDP']
+    canonical_bases = ['A','U','G','C','GDP','UDP','ADP','TDP','GTP','UMP']
 
     #mod_base_count = 0
 
@@ -237,6 +239,9 @@ def insert_modRNA_records2(c, mmCIF, PDB_ID, RNA_mod_list):
                         c.execute("INSERT INTO mod_RNA_list VALUES(?,?)",
                                   (mod_base,
                                    mmCIF['_chem_comp.name'][[i for i, x in enumerate(mmCIF['_chem_comp.id']) if x == mod_base][0]]))  #TODO check if it can be not a list (chem comp name)
+                        RNA_mod_list.append(mod_base)
+
+            return RNA_mod_list
         '''
         c.execute("INSERT INTO PDB_checklist VALUES(?,?,?,?,?)",
                   (PDB_ID, ftp_date.strftime(sql_date_format),
@@ -298,7 +303,7 @@ filenames = ftp.nlst()
 
 sql_date_format = "%Y-%m-%d"    # e.g. 2015-01-27
 ftp_date_format = "%Y%m%d"      # e.g. 20150127
-canonical_bases = ['A','U','G','C','GDP','UDP','ADP','TDP']
+canonical_bases = ['A','U','G','C','GDP','UDP','ADP','TDP','GTP','UMP']
 
 no_to_test = 0
 
@@ -309,8 +314,8 @@ no_to_test = 0
 for filename in filenames:
     PDB_ID = filename[0:4] # using the fact that PDB ID is 4-symbols
     print(PDB_ID)
-    # if PDB_ID < "2a9w":
-    #     continue
+    if PDB_ID < "2iqh":
+        continue
     # if PDB_ID in ["1n5m", "1tsl", "1y59", "2a9w"]:
     #     continue
 
@@ -334,7 +339,7 @@ for filename in filenames:
                          SET obsolete = 1
                          WHERE PDB_id = ? AND obsolete = 0""", (PDB_ID, ))
             #insert new modRNA records
-            insert_modRNA_records2(c, mmCIF, PDB_ID, RNA_mod_list)
+            RNA_mod_list = insert_modRNA_records2(c, mmCIF, PDB_ID, RNA_mod_list)
             c.execute("""UPDATE PDB_checklist
                          SET mod_date = ?
                          WHERE PDB_id = ?""",
@@ -348,6 +353,9 @@ for filename in filenames:
         #                              ftp_date_format)
 
         mmCIF = extract_mmCIF_header(ftp, filename)
+        # if mmCIF cannot be turned into a dictionary, continue
+        if mmCIF == 'NA':
+            continue
         insert_modRNA_records2(c, mmCIF, PDB_ID, RNA_mod_list)
         c.execute("INSERT INTO PDB_checklist VALUES(?,?,?,?,?)",
                   (PDB_ID, ftp_date.strftime(sql_date_format),
